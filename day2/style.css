@@ -2,7 +2,7 @@
 *,
 *::before,
 *::after,
-    box-sizing: border-box reset;
+    box-sizing border-box reset,
 
 body {
     margin: 0;
