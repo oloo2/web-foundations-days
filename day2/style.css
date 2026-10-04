@@ -1,0 +1,151 @@
+/* 1. Reset: predictable sizing and no default body margin */
+*,
+*::before,
+*::after,
+    box-sizing border-box reset,
+
+body {
+    margin: 0;
+    font-family: "Segoe UI", Arial, sans-serif;
+    background-color: #f4f6f8;
+    color: #222;
+    line-height: 1.5;
+}
+
+/* main */
+main {
+    max-width: 640px;
+    margin: 24px auto;
+    padding: 0 16px;
+}
+
+/* header */
+header {
+    background-color: #8e0000;
+    color: white;
+    text-align: center;
+    padding: 24px 16px;
+}
+
+header h1 {
+    margin: 0;
+}
+
+/* section */
+section {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+
+/* grid layout - desktop and tablet */
+#main-content {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); /* 2 equal columns */
+    gap: 24px;
+}
+
+/* form */
+#note-form {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* table */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+}
+
+th,
+td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+th {
+    background-color: #f2f2f2;
+}
+/* button */
+
+button {
+    background-color: #0ba184;
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #088a70;
+}
+
+/* navigation */
+nav {
+    text-align: center;
+}
+
+nav ul {
+    padding: 0;
+}
+
+nav ul {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    list-style: none;
+    margin-top: 16px;
+}
+
+/* links */
+a {
+    color: #8e0000;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* footer */
+footer {
+    text-align: center;
+    color: #777;
+    padding: 16px;
+}
+
+/* form - feedback */
+footer form {
+    margin-bottom: 16px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+footer form input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 1rem;
+}
+
+/* Media queries */
+@media (max-width: 600px) {
+    #note-form {
+        flex-direction: column;
+    }
+}
+
+@media (max-width: 600px) {
+    #main-content {
+        grid-template-columns: 1fr;
+    }
+}
