@@ -1,0 +1,169 @@
+:root {
+  --page-bg: #f8f8f4;
+  --text-color: #222;
+  --surface-color: #fff;
+  --header-bg: #058e00;
+  --button-bg: #0ba184;
+  --button-hover-bg: #088a70;
+  --note-bg: #fffbe6;
+  --muted-text: #777;
+}
+
+body.dark {
+  --page-bg: #151a21;
+  --text-color: #e8edf2;
+  --surface-color: #242c36;
+  --header-bg: #202b3b;
+  --button-bg: #138a78;
+  --button-hover-bg: #0f6e60;
+  --note-bg: #3a3828;
+  --muted-text: #b7c0ca;
+}
+
+/* 1. Reset: predictable sizing and no default body margin */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Calibri, Arial, sans-serif;
+  background-color: var(--page-bg);
+  color: var(--text-color);
+  line-height: 1.5;
+}
+
+/* 2. Header */
+header {
+  position: relative;
+  background-color: var(--header-bg);
+  color: white;
+  text-align: center;
+  padding: 56px 16px 24px;
+}
+
+header h1 {
+  margin: 0;
+}
+
+#theme-toggle {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+}
+
+/* 3. Centre the main content and limit its width */
+main {
+  max-width: 640px;
+  margin: 24px auto; /* auto left/right margins centre a block */
+  padding: 0 16px;
+}
+
+section {
+  background: var(--surface-color);
+  padding: 20px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* 4. Form layout with Flexbox */
+#note-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+#note-form label {
+  width: 100%; /* label on its own line */
+  font-weight: bold;
+}
+
+#note-input {
+  flex: 1;
+  min-height: 120px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+#char-count,
+#word-count {
+  width: 100%;
+  margin: 0;
+}
+
+#error-message {
+  color: #b00020;
+}
+
+button {
+  background-color: var(--button-bg);
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: var(--button-hover-bg);
+}
+
+/* 5. Notes list */
+#notes-list {
+  list-style: different; /* Use a different bullet style for the list */
+  padding: 0;
+}
+
+.note {
+  background-color: var(--note-bg);
+  border-left: 4px solid var(--button-bg);
+  padding: 12px 16px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+}
+
+.note {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.delete-btn {
+  background-color: #8e0000;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+.delete-btn:hover {
+  background-color: #6b0000;
+}
+
+/* 6. Footer */
+footer {
+  text-align: center;
+  color: var(--muted-text);
+  padding: 16px;
+}
+
+/* 7. Phones */
+@media (max-width: 600px) {
+  #note-form {
+    flex-direction: column;
+  }
+}
+
+.warning {
+  color: orange;
+}
+
+.over {
+  color: red;
+  font-weight: bold;
+}
