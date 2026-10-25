@@ -1,43 +1,41 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>QuickNotes</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css" />
     <script src="script.js" defer></script>
-</head>
-<body>
+  </head>
+  <body>
     <header>
-        <h1>QuickNotes</h1>
-        <button id="theme-toggle" type="button">Dark mode</button>
-        <p>Capture ideas before they disappear.</p>
+      <h1>QuickNotes</h1>
+      <button id="theme-toggle" type="button">Dark mode</button>
+      <p>Capture ideas before they disappear.</p>
     </header>
 
     <main>
-        <section>
-            <h2>Add a note</h2>
-            <form id="note-form">
-                <label for="note-input">New note</label>
-                <textarea id="note-input" placeholder="Type a note..."></textarea>
-                <p id="char-count" aria-live="polite">0 / 200 characters</p>
-                <p id="word-count" aria-live="polite">0 words</p>
-                <button type="submit">Add Note</button>
-                <button id="clear-btn" type="button">Clear draft</button>
-            </form>
-        </section>
+      <section>
+        <h2>Add a note</h2>
+        <form id="note-form">
+          <label for="note-input">New note</label>
+          <textarea id="note-input" placeholder="Type a note..."></textarea>
+          <p id="char-count" aria-live="polite">0 / 200 characters</p>
+          <p id="word-count" aria-live="polite">0 words</p>
+          <button type="submit">Add Note</button>
+          <button id="clear-btn" type="button">Clear draft</button>
+        </form>
+      </section>
 
-        <section>
-            <h2>Your notes</h2>
-            <p id="note-count">You have 0 notes</p>
-            <ul id="notes-list"></ul>
-        </section>
+      <section>
+        <h2>Your notes</h2>
+        <p id="note-count">You have 0 notes</p>
+        <ul id="notes-list"></ul>
+      </section>
     </main>
 
     <footer>
-        <p>&copy; 2026 QuickNotes. Built during Web Foundations.</p>
+      <p>&copy; 2026 QuickNotes. Built during Web Foundations.</p>
     </footer>
-</body>
-
+  </body>
 </html>
