@@ -167,3 +167,30 @@ footer {
   color: red;
   font-weight: bold;
 }
+
+/* 8. Website */
+@media (min-width: 601px) {
+  body {
+    font-size: 1.1rem;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    font-weight: 400;
+    font-display: swap;
+    flex-direction: ltr;
+  }
+}
+
+/* 8. Accessibility */
+#search-input {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+/* 9. No notes message */
+#no-notes-message {
+  text-align: center;
+  font-style: italic;
+  color: var(--muted-text);
+}
