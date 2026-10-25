@@ -9,7 +9,7 @@
   </head>
   <body>
     <header>
-      <h1>QuickNotes</h1>
+      <h1>Quick Notes</h1>
       <button id="theme-toggle" type="button">Dark mode</button>
       <p>Capture ideas before they disappear.</p>
     </header>
@@ -18,27 +18,30 @@
       <section>
         <h2>Add a note</h2>
         <form id="note-form">
-          <label for="note-input">New note</label>
-          <textarea id="note-input" placeholder="Type a note..."></textarea>
+          <label for="note-category">Category</label>
           <select id="note-category" aria-label="Select note category">
             <option value="">Select category</option>
             <option value="work">Work</option>
             <option value="personal">Personal</option>
-            <option value="shopping">Shopping</option>
+            <option value="study">Study</option>
             <option value="ideas">Ideas</option>
           </select>
+
+          <label for="note-input">New note</label>
+          <textarea id="note-input" placeholder="Type a note..."></textarea>
           <p id="char-count" aria-live="polite">0 / 200 characters</p>
           <p id="word-count" aria-live="polite">0 words</p>
           <button type="submit">Add Note</button>
           <button id="clear-btn" type="button">Clear draft</button>
+          <button id="clear-all-btn" type="button">Clear all notes</button>
         </form>
       </section>
 
       <section>
         <h2>Your notes</h2>
+        <input id="search-input" placeholder="Search notes..." />
         <p id="note-count">You have 0 notes</p>
         <ul id="notes-list"></ul>
-        <input id="search-input" placeholder="Search notes..." />
         <p id="no-notes-message" hidden>
           No notes available. Add a note to get started!
         </p>
