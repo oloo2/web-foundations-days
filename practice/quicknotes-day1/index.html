@@ -5,6 +5,47 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QuickNotes</title>
+</head>
+<body>
+    <header>
+        <h1>QuickNotes</h1>
+        <p>Capture ideas before they disappear.</p>
+    </header>
+
+    <main>
+        <section>
+            <h2>Add a note</h2>
+            <form id="note-form">
+                <label for="note-text">New note</label>
+                <textarea id="note-text" placeholder="Type a note..."></textarea>
+                <p id="char-count">Characters: 0</p>
+                <p id="word-count">Words: 0</p>
+                <button type="submit">Add Note</button>
+            </form>
+        </section>
+        
+        <section>
+            <h2>Your notes</h2>
+            <p id="note-count">You have 0 notes</p>
+            <ul id="notes-list"></ul>
+            <button id="clear-btn">Clear All Notes</button>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2026 QuickNotes. Built during Web Foundations.</p>
+    </footer>
+</body>
+
+</html>
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickNotes</title>
     <link rel="stylesheet" href="style.css">
     <script src="script.js" defer></script>
 </head>
