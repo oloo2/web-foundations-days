@@ -60,29 +60,184 @@ All endpoints are versioned under `/api/v1`. Checkout endpoints require authenti
 
 The hold endpoint is the authoritative availability check; clients must handle a conflict and choose different seats. The API never promises a seat based only on the seat-map response.
 
-## 4. Data model
+## 4. Data model and SQL schema
 
-Use a relational database for the transactional seat and order records. Primary keys and foreign keys enforce identity and relationships; transactions enforce state changes that span multiple records.
+Use PostgreSQL for the transactional records. The foreign keys express the relationships; unique constraints prevent duplicate venue seats and duplicate order/payment identities. Each seat row is the authoritative inventory record. Seat status is constrained so a seat cannot simultaneously be available, held, and sold.
 
-| Table      | Important fields                                                                                                         | Relationships and constraints                                                                                                                             |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `users`    | `user_id` (PK), `email` (unique), `created_at`                                                                           | One user can create many holds and orders.                                                                                                                |
-| `venues`   | `venue_id` (PK), `name`, `address`                                                                                       | One venue can host many events.                                                                                                                           |
-| `events`   | `event_id` (PK), `name`, `venue_id` (FK), `starts_at`, `sale_opens_at`, `status`                                         | Each event belongs to one venue and can have many seats and orders.                                                                                       |
-| `seats`    | `seat_id` (PK), `event_id` (FK), `section`, `row`, `number`, `price`, `status`, `hold_id`, `hold_expires_at`, `order_id` | Each seat belongs to one event. `UNIQUE(event_id, section, row, number)` prevents duplicate seat definitions. `status` is `available`, `held`, or `sold`. |
-| `holds`    | `hold_id` (PK), `user_id` (FK), `event_id` (FK), `created_at`, `expires_at`, `status`                                    | One user/event hold can cover multiple seats. A hold has many seat assignments; each seat's `hold_id` points to its current hold.                         |
-| `orders`   | `order_id` (PK), `user_id` (FK), `event_id` (FK), `hold_id` (FK), `status`, `total`, `created_at`                        | One user can have many orders; an order is created from a hold. `status` includes `pending_payment`, `confirmed`, `cancelled`, and `payment_failed`.      |
-| `payments` | `payment_id` (PK), `order_id` (FK), `provider_reference` (unique), `status`, `amount`, `created_at`                      | An order can have payment attempts; provider references are unique to make callbacks and retries idempotent.                                              |
+```sql
+CREATE TABLE users (
+    user_id       UUID PRIMARY KEY,
+    email         TEXT NOT NULL UNIQUE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
-### Preventing two people from buying the same seat
+CREATE TABLE venues (
+    venue_id      UUID PRIMARY KEY,
+    name          TEXT NOT NULL,
+    address       TEXT NOT NULL
+);
 
-The `seats` row is the single source of truth for each event seat. When a user requests seats, the service runs a database transaction that conditionally changes each requested row from `available` to `held`, sets a unique `hold_id` and `hold_expires_at`, and creates the hold record. The update succeeds only if the seat is still available (or its prior hold has expired). The transaction locks/updates the seat rows and commits all requested seats together; if any requested seat cannot be claimed, it rolls back the whole hold. Concurrent buyers therefore cannot both transition the same seat from available.
+CREATE TABLE events (
+    event_id      UUID PRIMARY KEY,
+    venue_id      UUID NOT NULL REFERENCES venues(venue_id),
+    name          TEXT NOT NULL,
+    starts_at     TIMESTAMPTZ NOT NULL,
+    sale_opens_at TIMESTAMPTZ NOT NULL,
+    status        TEXT NOT NULL CHECK (status IN ('draft', 'on_sale', 'closed'))
+);
 
-After payment authorization, another transaction confirms the order only if the hold is still active and unexpired, changes the held seats to `sold`, assigns the order, and marks the order confirmed. A unique database constraint on the seat's event/seat identity prevents duplicate seat records; row-level conditional updates prevent competing active claims. A background expiry worker releases seats from expired holds, while the hold endpoint also checks expiry so a delayed worker cannot extend a hold accidentally.
+CREATE TABLE holds (
+    hold_id       UUID PRIMARY KEY,
+    user_id       UUID NOT NULL REFERENCES users(user_id),
+    event_id      UUID NOT NULL REFERENCES events(event_id),
+    idempotency_key TEXT NOT NULL UNIQUE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at    TIMESTAMPTZ NOT NULL,
+    status        TEXT NOT NULL CHECK (status IN ('active', 'released', 'expired', 'converted')),
+    UNIQUE (hold_id, event_id),
+    CHECK (expires_at > created_at)
+);
 
-If payment fails, the hold is released. If payment authorization succeeds after the hold has expired or cannot be confirmed, the system voids the authorization rather than issuing a ticket. Payment-provider callbacks and client retries are idempotent, preventing duplicate charges or orders.
+CREATE TABLE orders (
+    order_id      UUID PRIMARY KEY,
+    user_id       UUID NOT NULL REFERENCES users(user_id),
+    event_id      UUID NOT NULL REFERENCES events(event_id),
+    hold_id       UUID NOT NULL UNIQUE,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    status        TEXT NOT NULL CHECK (
+                      status IN ('pending_payment', 'confirmed', 'cancelled', 'payment_failed')
+                  ),
+    total         NUMERIC(10, 2) NOT NULL CHECK (total >= 0),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (order_id, event_id),
+    FOREIGN KEY (hold_id, event_id) REFERENCES holds(hold_id, event_id)
+);
 
-## 5. Architecture
+CREATE TABLE seats (
+    seat_id         UUID PRIMARY KEY,
+    event_id        UUID NOT NULL REFERENCES events(event_id),
+    section         TEXT NOT NULL,
+    row_label       TEXT NOT NULL,
+    seat_number     TEXT NOT NULL,
+    price           NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
+    status          TEXT NOT NULL CHECK (status IN ('available', 'held', 'sold')),
+    hold_id         UUID,
+    hold_expires_at TIMESTAMPTZ,
+    order_id        UUID,
+    UNIQUE (event_id, section, row_label, seat_number),
+    FOREIGN KEY (hold_id, event_id) REFERENCES holds(hold_id, event_id),
+    FOREIGN KEY (order_id, event_id) REFERENCES orders(order_id, event_id),
+    CHECK (
+        (status = 'available' AND hold_id IS NULL AND hold_expires_at IS NULL AND order_id IS NULL)
+        OR
+        (status = 'held' AND hold_id IS NOT NULL AND hold_expires_at IS NOT NULL AND order_id IS NULL)
+        OR
+        (status = 'sold' AND hold_id IS NULL AND hold_expires_at IS NULL AND order_id IS NOT NULL)
+    )
+);
+
+CREATE INDEX seats_event_status_idx ON seats(event_id, status);
+CREATE INDEX seats_expired_holds_idx ON seats(hold_expires_at) WHERE status = 'held';
+
+CREATE TABLE payments (
+    payment_id          UUID PRIMARY KEY,
+    order_id            UUID NOT NULL REFERENCES orders(order_id),
+    idempotency_key     TEXT NOT NULL UNIQUE,
+    provider_reference  TEXT UNIQUE,
+    status              TEXT NOT NULL CHECK (
+                            status IN ('pending', 'authorized', 'captured', 'failed', 'voided', 'refunded')
+                        ),
+    amount              NUMERIC(10, 2) NOT NULL CHECK (amount >= 0),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+One venue has many events; each event has many seats, holds, and orders. A user can create multiple holds and orders. A hold may cover multiple seats, but an order can be created from that hold only once (`orders.hold_id UNIQUE`). The seat's single row records its current state; its foreign keys ensure a held or sold seat refers to a hold or order for that same event. The unique event/section/row/seat constraint prevents duplicate seat definitions.
+
+## 5. Transactional logic: preventing double booking
+
+The application starts a transaction for a hold, rejects duplicate IDs in the request, inserts one hold, locks requested seat rows in a stable order, then conditionally claims them. The placeholders below are PostgreSQL bind parameters: `$1` is the new hold UUID, `$2` the user UUID, `$3` the event UUID, `$4` the requested seat UUID array, `$5` the expiry timestamp, and `$6` the hold request's idempotency key.
+
+```sql
+BEGIN;
+
+INSERT INTO holds (hold_id, user_id, event_id, idempotency_key, expires_at, status)
+VALUES ($1, $2, $3, $6, $5, 'active');
+
+-- Lock every requested seat in a consistent order. The service verifies that
+-- this returns exactly the requested number of distinct seat IDs.
+SELECT seat_id
+FROM seats
+WHERE event_id = $3
+  AND seat_id = ANY($4::uuid[])
+ORDER BY seat_id
+FOR UPDATE;
+
+-- Only currently available seats or seats whose previous hold has expired
+-- can be claimed. RETURNING lets the service verify that every seat was claimed.
+UPDATE seats
+SET status = 'held',
+    hold_id = $1,
+    hold_expires_at = $5,
+    order_id = NULL
+WHERE event_id = $3
+  AND seat_id = ANY($4::uuid[])
+  AND (
+      status = 'available'
+      OR (status = 'held' AND hold_expires_at <= clock_timestamp())
+  )
+RETURNING seat_id;
+
+-- Application rule: if either the locked-seat count or returned-seat count
+-- differs from the requested distinct-seat count, ROLLBACK; otherwise COMMIT.
+COMMIT;
+```
+
+`SELECT ... FOR UPDATE` serializes competing transactions on the same seat rows. A second buyer waits, then the conditional `UPDATE` sees the committed `held` or `sold` state and cannot claim those seats. The service must roll back the entire transaction if even one requested seat is missing, unavailable, or already held; it must never commit a partial multi-seat request. The `UNIQUE` constraint on a seat's event/location and the row's single `status`/`hold_id` enforce inventory identity and ownership in the database, rather than relying on an application-side availability check that can go stale.
+
+Do not keep a database transaction open while calling the payment provider. First authorize payment using the order's idempotency key. On a successful authorization, finalize in a short database transaction: lock the hold row, verify `status = 'active'` and `expires_at > clock_timestamp()`, update all seats for that hold from `held` to `sold` and set their `order_id`, and mark the order `confirmed` and hold `converted`. Require the update to affect exactly the number of seats in the order; otherwise roll back and void the payment authorization. The expiry worker follows the same hold-then-seats lock order, and releases only seats whose `hold_expires_at <= clock_timestamp()`. Failed payment releases the hold; late or duplicate callbacks are handled idempotently and cannot confirm expired inventory.
+
+The order-finalization transaction uses the same locking rule. `$1` is the hold UUID and `$2` is the pending order UUID. The service checks that the locked hold is active and unexpired, and that the update returns exactly the expected seat count before committing. Any failed check rolls back the transaction.
+
+```sql
+BEGIN;
+
+SELECT hold_id
+FROM holds
+WHERE hold_id = $1
+  AND status = 'active'
+  AND expires_at > clock_timestamp()
+FOR UPDATE;
+
+UPDATE seats
+SET status = 'sold',
+    hold_id = NULL,
+    hold_expires_at = NULL,
+    order_id = $2
+WHERE hold_id = $1
+  AND status = 'held'
+  AND hold_expires_at > clock_timestamp()
+RETURNING seat_id;
+
+UPDATE orders
+SET status = 'confirmed'
+WHERE order_id = $2
+  AND hold_id = $1
+  AND status = 'pending_payment'
+RETURNING order_id;
+
+UPDATE holds
+SET status = 'converted'
+WHERE hold_id = $1
+  AND status = 'active'
+RETURNING hold_id;
+
+-- Commit only if the seat count and both returned IDs match expectations;
+-- otherwise ROLLBACK so neither inventory nor order state is partially changed.
+COMMIT;
+```
+
+## 6. Architecture and big-sale behavior
 
 ```text
                          ┌───────────────────────────┐
@@ -101,36 +256,32 @@ If payment fails, the hold is released. If payment authorization succeeds after 
                   │ + Cache         │  │ Admission Queue   │
                   └─────────────┬───┘  └─────────┬─────────┘
                                 │                ▼
-                                │       ┌───────────────────┐
-                                │       │ Ticketing / Order│
-                                │       │ Service           │
-                                │       └────┬────────┬─────┘
-                                │            │        │
-                   ┌────────────▼──┐  ┌──────▼─────┐  │
-                   │ Catalog Store │  │ Relational │  │
-                   └───────────────┘  │ Database   │  │
-                                      │ seats,     │  │
-                                      │ holds,     │  │
-                                      │ orders     │  │
-                                      └────────────┘  │
-                                                     ▼
-                                          ┌──────────────────┐
-                                          │ Payment Provider │
-                                          └──────────────────┘
+                   ┌────────────▼──┐  ┌───────────────────┐
+                   │ Catalog Store │  │ Ticketing / Order │
+                   └───────────────┘  │ Service           │
+                                      └────┬────────┬─────┘
+                                           │        │
+                                ┌──────────▼───┐    ▼
+                                │ Relational   │ ┌──────────────────┐
+                                │ Database     │ │ Payment Provider │
+                                │ seats/holds/ │ └──────────────────┘
+                                │ orders       │
+                                └──────────────┘
 ```
 
-- **Browser/mobile client:** Displays event and seat information and submits authenticated hold and checkout requests. It treats seat-map availability as provisional until a hold succeeds.
-- **CDN and web application firewall:** Serves static assets close to users, absorbs ordinary page traffic, and filters abusive requests. It does not make seat-allocation decisions.
-- **Catalog service and cache:** Handles read-heavy event searches and details. Cached catalog data keeps browsing traffic away from the transactional seat database.
-- **Catalog store:** Holds event and venue information optimized for browsing. The transactional database remains authoritative for whether a seat is held or sold.
-- **Waiting room/admission queue:** Smooths concentrated on-sale traffic, assigns queue positions using the stated fairness policy, and admits checkout work at a controlled rate.
-- **Ticketing/order service:** Authenticates purchase requests, applies idempotency, creates holds and orders, coordinates payment, and enforces the seat-state transitions.
-- **Relational database:** Stores users, seat inventory, holds, orders, and payment records. Transactions and conditional updates protect the no-double-sale invariant.
-- **Payment provider:** Authorizes and captures payment. It is outside the seat transaction, so the ticketing service reconciles payment results with the hold's current state and voids authorizations it cannot confirm.
+- **Browser/mobile client:** Browses events and submits authenticated hold and checkout requests. It treats seat-map availability as provisional; only a successful hold reserves a seat.
+- **CDN and web application firewall:** Serves static assets, absorbs ordinary page traffic, and filters abusive requests. It does not decide seat ownership.
+- **Catalog service, cache, and store:** Serve read-heavy event details and seat-map snapshots separately from checkout. Cached reads reduce load on the transactional database; a stale seat map is corrected by the authoritative hold response.
+- **Waiting room/admission queue:** Assigns fair queue positions and controls how quickly purchase requests reach the ticketing service. For the sale, 200,000 people arrive over 10 minutes (about 333 attempts/second on average) for 20,000 seats. The queue absorbs bursts and protects the database; it cannot create inventory, so unsuccessful customers receive a clear sold-out/conflict result.
+- **Ticketing/order service:** Authenticates users, applies rate limits and idempotency, creates holds, coordinates orders and payment, and executes the database transactions above.
+- **Relational database:** Stores seat inventory and transactional records. Row locks, conditional updates, foreign keys, and unique constraints preserve the no-double-sale invariant under concurrent requests.
+- **Payment provider:** Authorizes/captures payments outside the seat transaction. The service reconciles provider callbacks with the hold state and voids authorization if the hold can no longer be converted into a confirmed order.
 
-## 6. Trade-offs
+The normal day is about 500,000 page views (5.8/second averaged across 24 hours) and 5,000 tickets sold. The sale averages 333 purchase attempts/second, with a stated 4× burst-planning assumption of about 1,333 attempts/second. Cached browsing remains separate; the queue admits writes at a tested rate, and the database—not the queue or cache—makes the final seat decision.
 
-1. **Relational transactions vs. horizontal write scaling:** A relational database makes seat ownership and order changes straightforward to protect with transactions and constraints. It can become a write bottleneck during a highly contested sale. Keep browse reads cached, admit checkout traffic through a queue, and partition or shard by event only when measured scale requires it. Sharding improves write capacity but makes cross-event operations and operational management more complex.
-2. **Temporary holds vs. immediate payment without a hold:** A short hold gives a customer time to pay without allowing another buyer to claim the same seat. It also temporarily hides inventory when a buyer abandons checkout. Expiring holds restore inventory, but the expiry process and late-payment handling add complexity.
-3. **Waiting room vs. unrestricted direct access:** A waiting room protects the database and produces a more controlled sale under extreme demand. It adds queueing delay and a less immediate experience. Randomized positions for customers queued at the announced sale time, followed by FIFO for later arrivals, avoids rewarding refreshes while still giving latecomers a place. It is preferable to letting a traffic spike make checkout unavailable for everyone.
-4. **Strong consistency for seats vs. eventual consistency for availability displays:** Seat holds and orders require strongly consistent updates to prevent double sales. Seat maps can be cached or updated asynchronously for speed, but may briefly show a seat as available after another user has held it. The hold request resolves that race authoritatively and returns a clear conflict when necessary.
+## 7. Trade-offs
+
+1. **Relational transactions vs. horizontal write scaling:** A relational database makes seat ownership and order changes straightforward to protect with transactions and constraints. It can become a write bottleneck during a highly contested sale. Cache browsing and control checkout admission first; shard by event only if measured scale requires it, since sharding increases operational and cross-event query complexity.
+2. **Temporary holds vs. immediate payment without a hold:** A short hold gives a customer time to pay without allowing another buyer to claim the same seat, but temporarily hides inventory when a buyer abandons checkout. Expiry workers restore seats, at the cost of cleanup and late-payment reconciliation.
+3. **Waiting room vs. unrestricted direct access:** A queue protects the database and gives customers a predictable sale flow, but adds waiting and requires a clear fairness policy. Randomized positions for customers present at the announced sale time, followed by FIFO for later arrivals, prevents refreshes from improving a customer's place.
+4. **Strong consistency for seats vs. eventual consistency for availability displays:** Holds and orders need strongly consistent writes to prevent double sales. Seat maps can be cached or updated asynchronously for speed, but may briefly show a seat as available after another buyer has held it. The transactional hold endpoint resolves that race and returns a conflict when necessary.
